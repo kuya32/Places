@@ -56,6 +56,8 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
     private var latitude: Double = 0.0
     private var longitude: Double = 0.0
 
+    private var placeDetails: PlaceModel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityAddPlaceBinding.inflate(layoutInflater)
@@ -72,6 +74,10 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
             onBackPressed()
         }
 
+        if (intent.hasExtra(MainActivity.EXTRA_PLACE_DETAILS)) {
+            placeDetails = intent.getParcelableExtra(MainActivity.EXTRA_PLACE_DETAILS)
+        }
+
         dateSetListener = DatePickerDialog.OnDateSetListener {
                 view, year, month, dayOfMonth ->
             calendar.set(Calendar.YEAR, year)
@@ -81,6 +87,20 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
         }
 
         updateDateInView()
+
+        if (placeDetails != null) {
+            supportActionBar?.title = "Edit place"
+            binding.titleEditInput.setText(placeDetails!!.title)
+            binding.descriptionEditInput.setText(placeDetails!!.description)
+            binding.dateEditInput.setText(placeDetails!!.date)
+            binding.locationEditInput.setText(placeDetails!!.location)
+            latitude = placeDetails!!.latitude
+            longitude = placeDetails!!.longitude
+
+            saveImageToInternalStorage = (Uri.parse(placeDetails!!.image))
+            binding.appCompatImageView.setImageURI(saveImageToInternalStorage)
+            binding.savePlaceButton.text = "Update"
+        }
 
         binding.dateEditInput.setOnClickListener(this)
         binding.addImageTextButton.setOnClickListener(this)
@@ -130,7 +150,7 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                         Toast.makeText(this@AddPlaceActivity, "Please select an image!", Toast.LENGTH_SHORT).show()
                     } else -> {
                         val placeModel = PlaceModel(
-                                0,
+                                if (placeDetails == null) 0 else placeDetails!!.id,
                                 binding.titleEditInput.text.toString(),
                                 saveImageToInternalStorage.toString(),
                                 binding.descriptionEditInput.text.toString(),
@@ -139,13 +159,21 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                                 latitude,
                                 longitude
                         )
-                    val dbHandler = DatabaseHandler(this)
-                    val addPlace = dbHandler.addPlace(placeModel)
+                        val dbHandler = DatabaseHandler(this)
+                        if (placeDetails == null) {
+                            val addPlace = dbHandler.addPlace(placeModel)
+                            if (addPlace > 0) {
+                                setResult(Activity.RESULT_OK)
+                                finish()
+                            }
+                        } else {
+                            val updatePlace = dbHandler.updatePlace(placeModel)
+                            if (updatePlace > 0) {
+                                setResult(Activity.RESULT_OK)
+                                finish()
+                            }
+                        }
 
-                    if (addPlace > 0) {
-                        setResult(Activity.RESULT_OK)
-                        finish()
-                    }
                     }
                 }
             }

@@ -7,12 +7,16 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import androidx.appcompat.widget.Toolbar
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.macode.places.R
 import com.macode.places.adapters.PlacesAdapter
 import com.macode.places.database.DatabaseHandler
 import com.macode.places.databinding.ActivityMainBinding
 import com.macode.places.models.PlaceModel
+import com.macode.places.utilities.SwipeToDeleteCallback
+import com.macode.places.utilities.SwipeToEditCallback
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -65,6 +69,29 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             }
         })
+
+        val editSwipeHandler = object: SwipeToEditCallback(this) {
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val adapter = binding.placesRecyclerView.adapter as PlacesAdapter
+                adapter.notifyEditItem(this@MainActivity, viewHolder.adapterPosition, ADD_PLACE_ACTIVITY_REQUEST_CODE)
+            }
+        }
+
+        val editItemTouchHelper = ItemTouchHelper(editSwipeHandler)
+        editItemTouchHelper.attachToRecyclerView(binding.placesRecyclerView)
+
+        val deleteSwipeHandler = object: SwipeToDeleteCallback(this) {
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val adapter = binding.placesRecyclerView.adapter as PlacesAdapter
+                adapter.removeAt(viewHolder.adapterPosition)
+
+                getPlacesListFromLocalDB()
+            }
+        }
+
+        val deleteItemTouchHelper = ItemTouchHelper(deleteSwipeHandler)
+        deleteItemTouchHelper.attachToRecyclerView(binding.placesRecyclerView)
+
     }
 
     private fun getPlacesListFromLocalDB() {

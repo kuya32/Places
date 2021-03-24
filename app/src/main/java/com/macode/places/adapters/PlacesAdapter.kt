@@ -1,12 +1,16 @@
 package com.macode.places.adapters
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.macode.places.activities.AddPlaceActivity
+import com.macode.places.activities.MainActivity
 import com.macode.places.activities.PlaceDetailActivity
+import com.macode.places.database.DatabaseHandler
 import com.macode.places.databinding.SingleItemPlaceBinding
 import com.macode.places.models.PlaceModel
 
@@ -37,6 +41,22 @@ open class PlacesAdapter(private val context: Context, private var list: ArrayLi
             }
         }
 
+    }
+
+    fun notifyEditItem(activity: Activity, position: Int, requestCode: Int) {
+        val intent = Intent(context, AddPlaceActivity::class.java)
+        intent.putExtra(MainActivity.EXTRA_PLACE_DETAILS, list[position])
+        activity.startActivityForResult(intent, requestCode)
+        notifyItemChanged(position)
+    }
+
+    fun removeAt(position: Int) {
+        val dbHandler = DatabaseHandler(context)
+        val isDeleted = dbHandler.deletePlace(list[position])
+        if (isDeleted > 0) {
+            list.removeAt(position)
+            notifyItemRemoved(position)
+        }
     }
 
     override fun getItemCount(): Int {
