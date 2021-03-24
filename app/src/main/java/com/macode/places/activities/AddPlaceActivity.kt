@@ -1,10 +1,12 @@
-package com.macode.places
+package com.macode.places.activities
 
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -16,17 +18,25 @@ import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
+import com.google.android.material.textfield.TextInputLayout
 import com.karumi.dexter.Dexter
 import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
 import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
+import com.macode.places.R
+import com.macode.places.database.DatabaseHandler
 import com.macode.places.databinding.ActivityAddPlaceBinding
+import com.macode.places.models.PlaceModel
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -36,13 +46,15 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
     companion object {
         private const val GALLERY = 1
         private const val CAMERA = 2
-//        private const val CAMERA_PERMISSION_CODE = 1
-
+        private const val IMAGE_DIRECTORY = "PlacesAppImages"
     }
 
     private lateinit var binding: ActivityAddPlaceBinding
     private var calendar = Calendar.getInstance()
     private lateinit var dateSetListener: DatePickerDialog.OnDateSetListener
+    private var saveImageToInternalStorage: Uri? = null
+    private var latitude: Double = 0.0
+    private var longitude: Double = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,8 +80,11 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
             updateDateInView()
         }
 
+        updateDateInView()
+
         binding.dateEditInput.setOnClickListener(this)
         binding.addImageTextButton.setOnClickListener(this)
+        binding.savePlaceButton.setOnClickListener(this)
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
@@ -100,6 +115,40 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                 }
                 pictureDialog.show()
             }
+            R.id.savePlaceButton -> {
+                when {
+                    binding.titleEditInput.text.isNullOrEmpty() -> {
+                        showError(binding.titleInput, "Please enter title!")
+                    }
+                    binding.descriptionEditInput.text.isNullOrEmpty() -> {
+                        showError(binding.descriptionInput, "Please enter description!")
+                    }
+                    binding.locationEditInput.text.isNullOrEmpty() -> {
+                        showError(binding.locationInput, "Please select a location!")
+                    }
+                    saveImageToInternalStorage == null -> {
+                        Toast.makeText(this@AddPlaceActivity, "Please select an image!", Toast.LENGTH_SHORT).show()
+                    } else -> {
+                        val placeModel = PlaceModel(
+                                0,
+                                binding.titleEditInput.text.toString(),
+                                saveImageToInternalStorage.toString(),
+                                binding.descriptionEditInput.text.toString(),
+                                binding.dateEditInput.text.toString(),
+                                binding.locationEditInput.text.toString(),
+                                latitude,
+                                longitude
+                        )
+                    val dbHandler = DatabaseHandler(this)
+                    val addPlace = dbHandler.addPlace(placeModel)
+
+                    if (addPlace > 0) {
+                        setResult(Activity.RESULT_OK)
+                        finish()
+                    }
+                    }
+                }
+            }
         }
     }
 
@@ -114,6 +163,8 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                         val selectedImageBitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(this.contentResolver,
                             contentURI!!
                         ))
+                        saveImageToInternalStorage = saveImageToInternalStorage(selectedImageBitmap)
+                        Log.i("Saved image: ", "Path :: $saveImageToInternalStorage")
                         binding.appCompatImageView.setImageBitmap(selectedImageBitmap)
                     } catch (e: IOException) {
                         e.printStackTrace()
@@ -123,6 +174,8 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
             } else if (requestCode == CAMERA) {
                 if (data != null) {
                     val bitmap: Bitmap = data!!.extras!!.get("data") as Bitmap
+                    saveImageToInternalStorage = saveImageToInternalStorage(bitmap)
+                    Log.i("Saved image: ", "Path :: $saveImageToInternalStorage")
                     binding.appCompatImageView.setImageBitmap(bitmap)
                 }
             }
@@ -189,5 +242,27 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
         val format = "MM.dd.yyyy"
         val sdf = SimpleDateFormat(format, Locale.getDefault())
         binding.dateEditInput.setText(sdf.format(calendar.time).toString())
+    }
+
+    private fun saveImageToInternalStorage(bitmap: Bitmap): Uri {
+        val wrapper = ContextWrapper(applicationContext)
+        var file = wrapper.getDir(IMAGE_DIRECTORY, Context.MODE_PRIVATE)
+        file = File(file, "${UUID.randomUUID()}.png")
+
+        try {
+            val stream: OutputStream = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            stream.flush()
+            stream.close()
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+
+        return Uri.parse(file.absolutePath)
+    }
+
+    private fun showError(layout: TextInputLayout, text: String) {
+        layout.error = text
+        layout.requestFocus()
     }
 }

@@ -54,4 +54,7 @@ dependencies {
 
     // Dexter
     implementation 'com.karumi:dexter:6.2.2'
+
+    // Database Inspector
+    debugImplementation 'im.dino:dbinspector:3.4.1@aar'
 }
