@@ -19,6 +19,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         var ADD_PLACE_ACTIVITY_REQUEST_CODE = 1
+        val EXTRA_PLACE_DETAILS = "extraPlaceDetails"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +57,14 @@ class MainActivity : AppCompatActivity() {
 
         val placesAdapter = PlacesAdapter(this, placeList)
         binding.placesRecyclerView.adapter = placesAdapter
+
+        placesAdapter.setOnclickListener(object: PlacesAdapter.OnClickListener {
+            override fun onClick(position: Int, model: PlaceModel) {
+                val intent = Intent(this@MainActivity, PlaceDetailActivity::class.java)
+                intent.putExtra(EXTRA_PLACE_DETAILS, model)
+                startActivity(intent)
+            }
+        })
     }
 
     private fun getPlacesListFromLocalDB() {
