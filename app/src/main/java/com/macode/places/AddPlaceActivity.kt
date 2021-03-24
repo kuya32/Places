@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.drawable.ColorDrawable
@@ -34,8 +35,9 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
 
     companion object {
         private const val GALLERY = 1
+        private const val CAMERA = 2
 //        private const val CAMERA_PERMISSION_CODE = 1
-//        private const val CAMERA = 2
+
     }
 
     private lateinit var binding: ActivityAddPlaceBinding
@@ -118,6 +120,11 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                         Toast.makeText(this@AddPlaceActivity, "Failed to load the image!", Toast.LENGTH_SHORT).show()
                     }
                 }
+            } else if (requestCode == CAMERA) {
+                if (data != null) {
+                    val bitmap: Bitmap = data!!.extras!!.get("data") as Bitmap
+                    binding.appCompatImageView.setImageBitmap(bitmap)
+                }
             }
         }
     }
@@ -141,7 +148,22 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
     }
 
     private fun takePhotoWithCamera() {
+        Dexter.withContext(this).withPermissions(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Manifest.permission.CAMERA
+        ).withListener(object: MultiplePermissionsListener {
+            override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
+                if (report!!.areAllPermissionsGranted()) {
+                    val galleryIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                    startActivityForResult(galleryIntent, CAMERA)
+                }
+            }
 
+            override fun onPermissionRationaleShouldBeShown(permissions: MutableList<PermissionRequest>?, token: PermissionToken?) {
+                showRationalDialogForPermissions()
+            }
+        }).onSameThread().check()
     }
 
     private fun showRationalDialogForPermissions() {
