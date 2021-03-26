@@ -5,14 +5,19 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.ColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.drawable.ColorDrawable
+import android.location.Address
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -24,6 +29,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import android.view.View
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
@@ -41,12 +47,18 @@ import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import com.macode.places.R
 import com.macode.places.database.DatabaseHandler
 import com.macode.places.databinding.ActivityAddPlaceBinding
+import com.macode.places.databinding.DialogCustomProgressBinding
 import com.macode.places.models.PlaceModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
 import java.lang.Exception
+import java.lang.StringBuilder
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -69,6 +81,8 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
 
     private var placeDetails: PlaceModel? = null
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var progressDialog: Dialog
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -150,7 +164,44 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
             Log.i("Current Latitude", "$latitude")
             longitude = lastLocation.longitude
             Log.i("Current Longitude", "$longitude")
+
+            setAddressToLocationInput()
         }
+    }
+
+    fun setAddressToLocationInput() = runBlocking {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val addressList = use()
+                if(addressList != null && addressList.isNotEmpty()) {
+                    val address: Address = addressList[0]
+                    val sb = StringBuilder()
+                    for (i in 0..address.maxAddressLineIndex) {
+                        sb.append(address.getAddressLine(i)).append(" ")
+                    }
+                    sb.deleteCharAt(sb.length - 1)
+                    cancelProgressDialog()
+                    binding.locationEditInput.setText(sb.toString())
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun use(): List<Address>? {
+        val geocoder: Geocoder = Geocoder(this, Locale.getDefault())
+        return geocoder.getFromLocation(latitude, longitude, 1)
+    }
+
+    private fun showProgressDialog() {
+        progressDialog = Dialog(this@AddPlaceActivity)
+        progressDialog.setContentView(R.layout.dialog_custom_progress)
+        progressDialog.show()
+    }
+
+    private suspend fun cancelProgressDialog() {
+        progressDialog.dismiss()
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
@@ -203,6 +254,7 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                         }
 
                     }).onSameThread().check()
+                    showProgressDialog()
                 }
             }
             R.id.addImageTextButton -> {
