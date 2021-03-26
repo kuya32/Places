@@ -1,28 +1,43 @@
 package com.macode.places.activities
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.ColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.drawable.ColorDrawable
+import android.location.Address
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import android.view.View
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
+import com.google.android.gms.location.*
+import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.widget.Autocomplete
+import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
 import com.google.android.material.textfield.TextInputLayout
 import com.karumi.dexter.Dexter
 import com.karumi.dexter.MultiplePermissionsReport
@@ -32,11 +47,18 @@ import com.karumi.dexter.listener.multi.MultiplePermissionsListener
 import com.macode.places.R
 import com.macode.places.database.DatabaseHandler
 import com.macode.places.databinding.ActivityAddPlaceBinding
+import com.macode.places.databinding.DialogCustomProgressBinding
 import com.macode.places.models.PlaceModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.lang.Exception
+import java.lang.StringBuilder
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -47,6 +69,7 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
         private const val GALLERY = 1
         private const val CAMERA = 2
         private const val IMAGE_DIRECTORY = "PlacesAppImages"
+        private const val PLACE_AUTOCOMPLETE_REQUEST_CODE = 3
     }
 
     private lateinit var binding: ActivityAddPlaceBinding
@@ -57,6 +80,9 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
     private var longitude: Double = 0.0
 
     private var placeDetails: PlaceModel? = null
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var progressDialog: Dialog
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,12 +100,18 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
             onBackPressed()
         }
 
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        if (!Places.isInitialized()) {
+            Places.initialize(this@AddPlaceActivity, resources.getString(R.string.googleMapsAPIKey))
+        }
+
         if (intent.hasExtra(MainActivity.EXTRA_PLACE_DETAILS)) {
             placeDetails = intent.getParcelableExtra(MainActivity.EXTRA_PLACE_DETAILS)
         }
 
         dateSetListener = DatePickerDialog.OnDateSetListener {
-                view, year, month, dayOfMonth ->
+                _, year, month, dayOfMonth ->
             calendar.set(Calendar.YEAR, year)
             calendar.set(Calendar.MONTH, month)
             calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
@@ -103,8 +135,73 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
         }
 
         binding.dateEditInput.setOnClickListener(this)
+        binding.locationEditInput.setOnClickListener(this)
         binding.addImageTextButton.setOnClickListener(this)
         binding.savePlaceButton.setOnClickListener(this)
+        binding.getCurrentLocationButton.setOnClickListener(this)
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val locationManager: LocationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestNewLocationData() {
+        val locationRequest = LocationRequest.create().apply {
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            interval = 1000
+            numUpdates = 1
+        }
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallBack, Looper.myLooper())
+    }
+
+    private val locationCallBack = object: LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            super.onLocationResult(result)
+            val lastLocation: Location = result.lastLocation
+            latitude = lastLocation.latitude
+            Log.i("Current Latitude", "$latitude")
+            longitude = lastLocation.longitude
+            Log.i("Current Longitude", "$longitude")
+
+            setAddressToLocationInput()
+        }
+    }
+
+    fun setAddressToLocationInput() = runBlocking {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val addressList = use()
+                if(addressList != null && addressList.isNotEmpty()) {
+                    val address: Address = addressList[0]
+                    val sb = StringBuilder()
+                    for (i in 0..address.maxAddressLineIndex) {
+                        sb.append(address.getAddressLine(i)).append(" ")
+                    }
+                    sb.deleteCharAt(sb.length - 1)
+                    cancelProgressDialog()
+                    binding.locationEditInput.setText(sb.toString())
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun use(): List<Address>? {
+        val geocoder: Geocoder = Geocoder(this, Locale.getDefault())
+        return geocoder.getFromLocation(latitude, longitude, 1)
+    }
+
+    private fun showProgressDialog() {
+        progressDialog = Dialog(this@AddPlaceActivity)
+        progressDialog.setContentView(R.layout.dialog_custom_progress)
+        progressDialog.show()
+    }
+
+    private suspend fun cancelProgressDialog() {
+        progressDialog.dismiss()
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
@@ -121,6 +218,44 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                 dateDialog.show()
                 dateDialog.getButton(DatePickerDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#fe8a71"))
                 dateDialog.getButton(DatePickerDialog.BUTTON_POSITIVE).setTextColor(Color.parseColor("#fe8a71"))
+            }
+            R.id.locationEditInput -> {
+                try {
+                    val fields = listOf(
+                        Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG, Place.Field.ADDRESS
+                    )
+                    val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.FULLSCREEN, fields).build(this@AddPlaceActivity)
+                    startActivityForResult(intent, PLACE_AUTOCOMPLETE_REQUEST_CODE)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            R.id.getCurrentLocationButton -> {
+                if (!isLocationEnabled()) {
+                    Toast.makeText(this, "Your location provider is turned off. Please turn it on!", Toast.LENGTH_SHORT).show()
+                    val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                    startActivity(intent)
+                } else {
+                    Dexter.withContext(this).withPermissions(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ).withListener(object: MultiplePermissionsListener {
+                        override fun onPermissionsChecked(report: MultiplePermissionsReport?) {
+                            if (report!!.areAllPermissionsGranted()) {
+                                requestNewLocationData()
+                            }
+                        }
+
+                        override fun onPermissionRationaleShouldBeShown(
+                            permissions: MutableList<PermissionRequest>?,
+                            token: PermissionToken?
+                        ) {
+                            showRationalDialogForPermissions()
+                        }
+
+                    }).onSameThread().check()
+                    showProgressDialog()
+                }
             }
             R.id.addImageTextButton -> {
                 val pictureDialog = AlertDialog.Builder(this)
@@ -201,11 +336,16 @@ class AddPlaceActivity : AppCompatActivity(), View.OnClickListener {
                 }
             } else if (requestCode == CAMERA) {
                 if (data != null) {
-                    val bitmap: Bitmap = data!!.extras!!.get("data") as Bitmap
+                    val bitmap: Bitmap = data.extras!!.get("data") as Bitmap
                     saveImageToInternalStorage = saveImageToInternalStorage(bitmap)
                     Log.i("Saved image: ", "Path :: $saveImageToInternalStorage")
                     binding.appCompatImageView.setImageBitmap(bitmap)
                 }
+            } else if (requestCode == PLACE_AUTOCOMPLETE_REQUEST_CODE) {
+                val place: Place = Autocomplete.getPlaceFromIntent(data!!)
+                binding.locationEditInput.setText(place.address)
+                latitude = place.latLng!!.latitude
+                longitude = place.latLng!!.longitude
             }
         }
     }

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Places</string>
+    <string name="googleMapsAPIKey" templateMergeStrategy="preserve" translatable="false">AIzaSyDr74tzARUBUa6-DF9uMBg8iVqjYebKRME</string>
 </resources>
